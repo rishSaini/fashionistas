@@ -1,0 +1,30 @@
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # Checks for updates every 15 minutes
+  workflow_dispatch:       # Allows manual trigger from the Actions tab
+
+jobs:
+  sync:
+    # Only run in the fork, never in the original repo
+    if: github.repository == 'rishSaini/fashionistas'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout forked repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Sync with original repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Diya-Mandot/fashionistas.git
+          git fetch upstream main
+          git checkout main
+          git merge upstream/main --ff-only
+          git push origin main
