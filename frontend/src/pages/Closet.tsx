@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { IoAddOutline } from 'react-icons/io5';
-import { Link } from 'react-router-dom';
+import { IoAddOutline, IoArrowForward, IoBagHandleOutline, IoStorefrontOutline } from 'react-icons/io5';
+import { Link, useLocation } from 'react-router-dom';
 import { FilterChip } from '../components/Chip';
 import { ItemCard } from '../components/ItemCard';
 import { ItemDrawer } from '../components/ItemDrawer';
@@ -11,7 +11,14 @@ import type { WardrobeItem } from '../lib/types';
 const CATEGORY_FILTERS = ['all', 'tops', 'bottoms', 'dresses', 'outerwear', 'shoes', 'activewear', 'accessories', 'bags'];
 const FORMALITY_FILTERS = ['any', 'casual', 'smart casual', 'business', 'formal'];
 
-export function Closet({ active = true }: { active?: boolean }) {
+const SHOP_LINKS = [
+  { to: '/buy', title: 'Should I buy?', blurb: 'Check a piece against your closet', icon: IoBagHandleOutline },
+  { to: '/shop', title: 'Shop', blurb: 'Fill the gaps in your wardrobe', icon: IoStorefrontOutline },
+];
+
+export function Closet({
+  active = true, revision, latestScanId,
+}: { active?: boolean; revision: number; latestScanId: string | null }) {
   const [items, setItems] = useState<WardrobeItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState('all');
@@ -40,7 +47,15 @@ export function Closet({ active = true }: { active?: boolean }) {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [active]);
+  }, [active, revision]);
+
+  // /closet?item=itm_… opens that item (linked from Should I Buy This? duplicates).
+  const linkedId = new URLSearchParams(useLocation().search).get('item');
+  useEffect(() => {
+    if (!active || !linkedId || !items) return;
+    const found = items.find((i) => i.id === linkedId);
+    if (found) setSelected(found);
+  }, [active, linkedId, items]);
 
   const visible = useMemo(
     () =>
@@ -48,9 +63,13 @@ export function Closet({ active = true }: { active?: boolean }) {
         .filter(
           (i) => (category === 'all' || i.category === category) && (formality === 'any' || i.formality === formality),
         )
-        .sort((a, b) => CATEGORY_FILTERS.indexOf(a.category) - CATEGORY_FILTERS.indexOf(b.category)),
-    [items, category, formality],
+        .sort((a, b) => (
+          Number(b.id === latestScanId) - Number(a.id === latestScanId)
+          || CATEGORY_FILTERS.indexOf(a.category) - CATEGORY_FILTERS.indexOf(b.category)
+        )),
+    [items, category, formality, latestScanId],
   );
+  const hiddenScan = items?.find((item) => item.id === latestScanId && !visible.some((shown) => shown.id === item.id));
 
   const onDelete = async (item: WardrobeItem) => {
     await api.deleteItem(item.id);
@@ -60,13 +79,31 @@ export function Closet({ active = true }: { active?: boolean }) {
 
   return (
     <PageShell>
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="type-micro mb-2">Your closet</p>
           <h1 className="type-display-lg">
             {items ? `${items.length} pieces` : 'Loading…'}
           </h1>
           <p className="type-body-md mt-1">Everything the stylist agent can pick from.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {SHOP_LINKS.map(({ to, title, blurb, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                className="group flex items-center gap-3 rounded-2xl border border-line-subtle bg-white/85 p-3 pr-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-forest text-white">
+                  <Icon size={20} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold text-ink">{title}</span>
+                  <span className="block text-[12px] text-ink/60">{blurb}</span>
+                </span>
+                <IoArrowForward size={16} className="text-ink/50 transition group-hover:translate-x-0.5 group-hover:text-ink" />
+              </Link>
+            ))}
+          </div>
         </div>
         <Link
           to="/scan"
@@ -92,6 +129,18 @@ export function Closet({ active = true }: { active?: boolean }) {
       </div>
 
       {error && <p className="type-body-md text-error">Couldn’t load your closet: {error}</p>}
+      {hiddenScan && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <p className="type-body-sm">{hiddenScan.name} was saved. Your current filters hide it.</p>
+          <button
+            type="button"
+            className="text-sm font-semibold text-ocean-deep underline"
+            onClick={() => { setCategory('all'); setFormality('any'); }}
+          >
+            Show scanned item
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {visible.map((item) => (
